@@ -31,6 +31,15 @@ class ItineraryResult:
     total_travel_minutes: float
     available_minutes: float
     utilization_percent: float
+    # sum of the top-N scores available in the scored/filtered candidate pool,
+    # where N = number of stops selected. Used to display Trip Score as
+    # "how close to the best possible itinerary of this size", so the metric
+    # doesn't penalize itineraries just for having more stops.
+    max_possible_score: float = 0.0
+    # True when preprocessing + min-score filtering left zero candidate
+    # attractions to choose from (as opposed to attractions existing but not
+    # fitting the time budget). Lets the UI show a precise message.
+    candidate_pool_empty: bool = False
 
 
 @dataclass
@@ -42,6 +51,8 @@ class DayItineraryResult:
     total_travel_minutes: float
     available_minutes: float
     utilization_percent: float
+    max_possible_score: float = 0.0
+    candidate_pool_empty: bool = False
 
 
 @dataclass
@@ -50,6 +61,8 @@ class MultiDayItineraryResult:
     total_score: float
     total_visit_minutes: int
     total_travel_minutes: float
+    max_possible_score: float = 0.0
+    candidate_pool_empty: bool = False
 
 
 def _apply_per_day_category_cap(
@@ -70,6 +83,18 @@ def _apply_per_day_category_cap(
     if dropped:
         logger.info("Per-day cap dropped %d stops: %s", len(dropped), [a.name for a in dropped])
     return kept, dropped
+
+
+def _max_possible_score(pool: List[Attraction], stop_count: int) -> float:
+    # best score achievable by picking `stop_count` attractions from this
+    # scored/filtered pool, ignoring time/category constraints. This is the
+    # denominator for the Trip Score display: it answers "how close to the
+    # best N-stop itinerary from this pool did we get", so the score no
+    # longer drops just because more stops were included.
+    if stop_count <= 0 or not pool:
+        return 0.0
+    top_scores = sorted((a.personalized_score for a in pool), reverse=True)[:stop_count]
+    return round(sum(top_scores), 4)
 
 
 def _gap_fill(
@@ -128,6 +153,19 @@ class TripOptimizer:
         attractions = self.scorer.score_attractions(attractions, user_interests)
         attractions = filter_by_min_score(attractions)
 
+        if not attractions:
+            logger.info("No attractions passed preprocessing/quality filters.")
+            return ItineraryResult(
+                stops=[],
+                total_score=0.0,
+                total_visit_minutes=0,
+                total_travel_minutes=0.0,
+                available_minutes=available_minutes,
+                utilization_percent=0.0,
+                max_possible_score=0.0,
+                candidate_pool_empty=True,
+            )
+
         knapsack_result = solve_knapsack(attractions, visit_budget_minutes)
         selected = knapsack_result.selected_attractions
 
@@ -148,15 +186,21 @@ class TripOptimizer:
 
         total_visit_minutes = sum(a.visit_duration_minutes for a in selected)
         total_score = round(sum(a.personalized_score for a in selected), 4)
-        total_used_minutes = total_visit_minutes + route_result.total_travel_minutes
+        # Utilization is defined purely as visit time against the day's total
+        # available time (not the pre-shrunk visit budget, and not inflated
+        # by travel time). This avoids the confusing situation where a
+        # perfectly-full visit budget still can't exceed (1 - travel buffer
+        # ratio) * 100%, and where tiny travel times made the number look
+        # arbitrarily low.
         utilization_percent = (
-            round((total_used_minutes / available_minutes) * 100, 1)
+            round((total_visit_minutes / available_minutes) * 100, 1)
             if available_minutes > 0 else 0.0
         )
+        max_possible_score = _max_possible_score(attractions, len(selected))
 
         logger.info(
-            "Final itinerary: %d stops | score=%.3f | visit=%dmin | travel=%.1fmin | utilization=%.1f%%",
-            len(selected), total_score, total_visit_minutes,
+            "Final itinerary: %d stops | score=%.3f/%.3f | visit=%dmin | travel=%.1fmin | utilization=%.1f%%",
+            len(selected), total_score, max_possible_score, total_visit_minutes,
             route_result.total_travel_minutes, utilization_percent,
         )
 
@@ -167,6 +211,7 @@ class TripOptimizer:
             total_travel_minutes=route_result.total_travel_minutes,
             available_minutes=available_minutes,
             utilization_percent=utilization_percent,
+            max_possible_score=max_possible_score,
         )
 
     def generate_multi_day_itinerary(
@@ -184,6 +229,32 @@ class TripOptimizer:
         attractions = preprocess(candidate_attractions)
         attractions = self.scorer.score_attractions(attractions, user_interests)
         attractions = filter_by_min_score(attractions)
+
+        if not attractions:
+            logger.info("No attractions passed preprocessing/quality filters.")
+            empty_days = [
+                DayItineraryResult(
+                    day_index=i,
+                    stops=[],
+                    total_score=0.0,
+                    total_visit_minutes=0,
+                    total_travel_minutes=0.0,
+                    available_minutes=available_minutes_per_day,
+                    utilization_percent=0.0,
+                    max_possible_score=0.0,
+                    candidate_pool_empty=True,
+                )
+                for i in range(num_days)
+            ]
+            return MultiDayItineraryResult(
+                days=empty_days,
+                total_score=0.0,
+                total_visit_minutes=0,
+                total_travel_minutes=0.0,
+                max_possible_score=0.0,
+                candidate_pool_empty=True,
+            )
+
         # sort descending so multi-day knapsack sees best attractions first
         # this ensures top-scored tourist places land in Day 1, not scattered randomly
         attractions = sorted(attractions, key=lambda a: a.personalized_score, reverse=True)
@@ -229,11 +300,12 @@ class TripOptimizer:
 
             total_visit_minutes = sum(a.visit_duration_minutes for a in selected)
             total_score = round(sum(a.personalized_score for a in selected), 4)
-            total_used_minutes = total_visit_minutes + route_result.total_travel_minutes
+            # visit-time-only utilization — see comment in generate_itinerary
             utilization_percent = (
-                round((total_used_minutes / available_minutes_per_day) * 100, 1)
+                round((total_visit_minutes / available_minutes_per_day) * 100, 1)
                 if available_minutes_per_day > 0 else 0.0
             )
+            day_max_possible_score = _max_possible_score(attractions, len(selected))
 
             day_results.append(
                 DayItineraryResult(
@@ -244,16 +316,19 @@ class TripOptimizer:
                     total_travel_minutes=route_result.total_travel_minutes,
                     available_minutes=available_minutes_per_day,
                     utilization_percent=utilization_percent,
+                    max_possible_score=day_max_possible_score,
                 )
             )
 
         trip_total_score = round(sum(d.total_score for d in day_results), 4)
         trip_total_visit_minutes = sum(d.total_visit_minutes for d in day_results)
         trip_total_travel_minutes = round(sum(d.total_travel_minutes for d in day_results), 1)
+        trip_max_possible_score = round(sum(d.max_possible_score for d in day_results), 4)
 
         logger.info(
-            "Multi-day itinerary: %d days | score=%.3f | visit=%dmin | travel=%.1fmin",
-            num_days, trip_total_score, trip_total_visit_minutes, trip_total_travel_minutes,
+            "Multi-day itinerary: %d days | score=%.3f/%.3f | visit=%dmin | travel=%.1fmin",
+            num_days, trip_total_score, trip_max_possible_score,
+            trip_total_visit_minutes, trip_total_travel_minutes,
         )
 
         return MultiDayItineraryResult(
@@ -261,6 +336,7 @@ class TripOptimizer:
             total_score=trip_total_score,
             total_visit_minutes=trip_total_visit_minutes,
             total_travel_minutes=trip_total_travel_minutes,
+            max_possible_score=trip_max_possible_score,
         )
 
     @staticmethod
