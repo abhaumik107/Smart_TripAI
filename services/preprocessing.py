@@ -21,13 +21,13 @@ _NAME_KEYWORD_BLOCKLIST: Set[str] = {
     "hotel", "hostel", "inn ", " inn", "motel", "lodge", "lodging",
     "suites", "guest house", "guesthouse", "serviced apartment",
     "cinema", "cinemas", "cineplex", "multiplex",
-    " bank", "bank ", "atm ",
+    " bank", "bank ", "atm ","college","furniture","gallery","coffee","jamaat","masjid","mosque","gurudwara","technology"
 }
 
 # Google Places types that are never useful in a travel itinerary
 _CATEGORY_BLOCKLIST: Set[str] = {
-    "lodging", "hotel", "motel", "hostel", "guest_house",
-    "real_estate_agency", "insurance_agency", "bank", "atm",
+    "lodging", "hotel", "motel", "hostel", "guest_house", "college","furniture","gallery","coffee","cemetorium","cemetory",
+    "real_estate_agency", "insurance_agency", "bank", "atm","jamaat","masjid","mosque","gurudwara","technology",
     "gas_station", "car_repair", "car_dealer", "car_wash",
     "laundry", "hair_care", "beauty_salon", "gym", "physiotherapist",
     "hospital", "doctor", "dentist", "pharmacy", "veterinary_care",
@@ -50,7 +50,20 @@ _CATEGORY_DIVERSITY_CAP: Dict[str, int] = {
 _DEFAULT_CATEGORY_CAP = 8  # tourist/landmark categories need enough to fill multi-day trips
 
 MIN_SCORE_THRESHOLD: float = 0.35  # relaxed slightly — scoring already filters quality
-MIN_RATING: float = 3.65            # 3.8 was too aggressive, many legit tourist spots fall below
+MIN_RATING: float = 3.70            # 3.8 was too aggressive, many legit tourist spots fall below
+
+# a place can have a great rating from a handful of reviews and still be
+# essentially unknown (a tiny private gallery, a niche shop). Require a
+# minimum amount of social proof so the pool skews toward places people
+# have actually heard of / visited, not just places that scored well with
+# a small circle of reviewers. Landmark-tier categories get a lower floor
+# since there are fewer of them and even lesser-known ones are often
+# genuinely worth visiting.
+MIN_REVIEW_COUNT: int = 200
+_LANDMARK_MIN_REVIEW_COUNT: int = 25
+_LANDMARK_CATEGORIES: Set[str] = {
+    "museum", "historical_landmark", "tourist_attraction", "monument",
+}
 
 
 def _is_name_blocked(name: str) -> bool:
@@ -71,6 +84,13 @@ def clean_attractions(attractions: List[Attraction]) -> List[Attraction]:
         if attraction.latitude == 0.0 and attraction.longitude == 0.0:
             continue
         if attraction.rating < MIN_RATING:
+            continue
+        min_reviews = (
+            _LANDMARK_MIN_REVIEW_COUNT
+            if attraction.category in _LANDMARK_CATEGORIES
+            else MIN_REVIEW_COUNT
+        )
+        if attraction.review_count < min_reviews:
             continue
         if attraction.category in _CATEGORY_BLOCKLIST:
             continue
