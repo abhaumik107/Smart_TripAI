@@ -12,8 +12,6 @@ from utils.helpers import get_logger
 logger = get_logger(__name__)
 
 # Google Places types that should never appear in a travel itinerary
-# checked against the full types[] array each result returns — catches hotels/banks
-# tagged as tourist_attraction, establishment, point_of_interest etc.
 _BLOCKED_PLACE_TYPES = {
     "lodging",                  # hotels, hostels, motels, B&Bs
     "bank", "atm", "finance",   # banks and ATMs
@@ -26,7 +24,6 @@ _BLOCKED_PLACE_TYPES = {
     "funeral_home", "storage",
     "transit_station", "bus_station", "subway_station", "taxi_stand",
 }
-
 
 @dataclass
 class Attraction:
@@ -44,6 +41,11 @@ class Attraction:
     visit_duration_minutes: int = field(default=0)
     personalized_score: float = field(default=0.0)
     price_level: int = field(default=-1)  # 0=free 1=cheap 2=moderate 3=expensive; -1=unknown
+
+    # populated by the scorer with the actual weighted contribution of each
+    # scoring component. The UI reads this directly (see app.py
+    # _why_selected_reasons) instead of guessing reasons from heuristics.
+    score_components: dict = field(default_factory=dict)
 
 
 class GeocodingError(Exception):
@@ -90,6 +92,11 @@ class PlacesClient:
 
         location = data["results"][0]["geometry"]["location"]
         return location["lat"], location["lng"]
+
+    def geocode_city_center(self, city: str) -> Tuple[float, float]:
+        # geocodes just the city name (no landmark) so callers can sanity-check
+        # a starting location against where the city actually is
+        return self.geocode(city)
 
     @staticmethod
     def _mock_geocode(location_text: str) -> Tuple[float, float]:
