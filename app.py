@@ -13,7 +13,7 @@ from services.optimizer import (
     MultiDayItineraryResult,
     TripOptimizer,
 )
-from utils.helpers import format_minutes_as_hours_text, get_logger
+from utils.helpers import format_minutes_as_hours_text, get_logger, haversine_distance_km
 
 logger = get_logger(__name__)
 
@@ -273,21 +273,41 @@ def render_sidebar():
     return city, starting_location, available_hours, int(num_days), interests, submitted
 
 
-def _normalized_trip_score(total_score: float, stop_count: int) -> int:
-    """Display-only normalization of the raw score onto a 0-100 scale.
-    Does not alter the underlying scoring/optimization logic in any way."""
-    if stop_count <= 0:
+def _normalized_trip_score(total_score: float, max_possible_score: float) -> int:
+    """Display-only normalization of the raw score onto a 0-100 scale, relative
+    to the best score achievable from the same candidate pool for the same
+    number of stops. Does not alter the underlying scoring/optimization logic.
+
+    Using the pool's top-possible score as the denominator (instead of dividing
+    by stop count) means a 6-stop itinerary that captured 9/10 of the best
+    possible 6-stop combination scores the same as a 1-stop itinerary that
+    captured 9/10 of the best possible 1-stop pick — more stops no longer
+    drags the displayed score down."""
+    if max_possible_score <= 0:
         return 0
-    avg_score_per_stop = total_score / stop_count
-    return max(0, min(100, round(avg_score_per_stop * 100)))
+    return max(0, min(100, round((total_score / max_possible_score) * 100)))
 
 
-def render_summary(total_score, total_visit_minutes, total_travel_minutes, utilization_percent, stop_count: int):
+def render_summary(total_score, total_visit_minutes, total_travel_minutes,
+                    utilization_percent, stop_count: int, max_possible_score: float,
+                    available_minutes: float = None):
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Trip Score", f"{_normalized_trip_score(total_score, stop_count)}/100")
+    col1.metric("Trip Score", f"{_normalized_trip_score(total_score, max_possible_score)}/100")
     col2.metric("Visit Time", format_minutes_as_hours_text(total_visit_minutes))
     col3.metric("Travel Time", format_minutes_as_hours_text(total_travel_minutes))
     col4.metric("Time Utilization", f"{utilization_percent:.1f}%")
+
+    # Utilization now measures visit time only (see optimizer.py), so give a
+    # one-line breakdown showing where the rest of the available time went —
+    # this avoids the number reading as "the app did a bad job" when it's
+    # actually travel time or simply unused slack.
+    if available_minutes and available_minutes > 0:
+        travel_pct = round((total_travel_minutes / available_minutes) * 100, 1)
+        unused_pct = max(0.0, round(100 - utilization_percent - travel_pct, 1))
+        st.caption(
+            f"Of your available time: {utilization_percent:.1f}% spent visiting, "
+            f"{travel_pct:.1f}% traveling, {unused_pct:.1f}% unused."
+        )
 
 
 def render_map(start_coords, stops: List[RouteStop], map_key: str):
@@ -308,7 +328,7 @@ def render_map(start_coords, stops: List[RouteStop], map_key: str):
             tooltip=f"{stop.arrival_order}. {stop.attraction.name}",
             popup=(
                 f"<b>{stop.attraction.name}</b><br>"
-                f"Score: {stop.attraction.personalized_score:.2f}<br>"
+                f"Score: {round(stop.attraction.personalized_score * 100)}/100<br>"
                 f"Visit: {format_minutes_as_hours_text(stop.attraction.visit_duration_minutes)}"
             ),
             icon=folium.Icon(color="blue", icon="info-sign"),
@@ -321,42 +341,54 @@ def render_map(start_coords, stops: List[RouteStop], map_key: str):
 
 
 def _why_selected_reasons(stop: RouteStop, user_interests) -> List[str]:
-    """Pure display heuristic for explaining a recommendation.
-    Does not read from or alter the recommendation engine / optimizer."""
-    score = stop.attraction.personalized_score
-    reasons: List[str] = []
+    """Explains a recommendation using the scorer's actual weighted component
+    contributions (see ml/scorer.py WeightedScorer.score), not a separate
+    display-only heuristic. If the components aren't available for some
+    reason (e.g. a custom scorer that doesn't populate them), fall back to a
+    single honest generic reason rather than fabricating specifics."""
+    components = getattr(stop.attraction, "score_components", None)
+    if not components:
+        return ["Selected by the optimizer's scoring model"]
 
-    category = getattr(stop.attraction, "category", None) or getattr(stop.attraction, "categories", None)
-    if category and user_interests:
-        category_text = " ".join(category) if isinstance(category, (list, tuple, set)) else str(category)
-        if any(interest.lower() in category_text.lower() for interest in user_interests):
-            reasons.append("Matches your interests")
+    weights = config.SCORING_WEIGHTS
+    candidates = [
+        (
+            components.get("interest_contribution", 0.0),
+            "Strong match to your selected interests"
+            if components.get("interest_match", 0.0) >= 0.5
+            else None,
+        ),
+        (
+            components.get("rating_contribution", 0.0),
+            f"Top-rated within the search area ({stop.attraction.rating:.1f}★)"
+            if components.get("normalized_rating", 0.0) >= 0.7
+            else None,
+        ),
+        (
+            components.get("popularity_contribution", 0.0),
+            f"Popular with past visitors ({stop.attraction.review_count:,} reviews)"
+            if components.get("normalized_popularity", 0.0) >= 0.6
+            else None,
+        ),
+    ]
+    if components.get("prestige_multiplier", 1.0) > 1.0:
+        candidates.append((weights.rating_weight, "Iconic landmark/tourist-category boost"))
 
-    rating = getattr(stop.attraction, "rating", None)
-    if (rating and rating >= 4.3) or score >= 0.85:
-        reasons.append("Highly rated")
+    # rank by actual weighted contribution to the final score, highest first
+    ranked = sorted(
+        (c for c in candidates if c[1] is not None),
+        key=lambda c: c[0],
+        reverse=True,
+    )
+    reasons = [label for _, label in ranked][:3]
 
-    review_count = getattr(stop.attraction, "review_count", None) or getattr(stop.attraction, "popularity", None)
-    if review_count and review_count >= 500:
-        reasons.append("Popular attraction")
+    if not reasons:
+        reasons.append(
+            f"Best available match at score {stop.attraction.personalized_score:.2f} "
+            f"among candidates in your search area"
+        )
 
-    if stop.attraction.visit_duration_minutes <= 45:
-        reasons.append("Fits within your available time")
-
-    if 0.7 <= score < 0.85:
-        reasons.append("Good overall recommendation score")
-
-    deduped: List[str] = []
-    for reason in reasons:
-        if reason not in deduped:
-            deduped.append(reason)
-
-    if len(deduped) < 2:
-        deduped.append("Good overall recommendation score")
-    if len(deduped) < 2:
-        deduped.append("Fits within your available time")
-
-    return deduped[:3]
+    return reasons
 
 
 def _why_selected_html(reasons: List[str]) -> str:
@@ -380,7 +412,7 @@ def _stop_card_html(stop: RouteStop, arrival_label: str, travel_text: str, delay
         f'<div class="stop-name">{stop.attraction.name}</div>'
         f'<div class="stop-address">{stop.attraction.address}</div>'
         f'<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">'
-        f'<span class="score-pill">score {stop.attraction.personalized_score:.2f}</span>'
+        f'<span class="score-pill">score {round(stop.attraction.personalized_score * 100)}/100</span>'
         f'<span style="color:#A4ABBC;font-size:.88rem;font-weight:600">{visit_text}</span>'
         f'</div>'
         f'{why_html}'
@@ -413,7 +445,8 @@ def render_stop_grid(stops: List[RouteStop], arrivals, start_index: int, user_in
     st.markdown('<div class="stop-grid-3">' + "".join(cards) + '</div>', unsafe_allow_html=True)
 
 
-def render_itinerary(start_coords, stops: List[RouteStop], map_key: str, user_interests=()):
+def render_itinerary(start_coords, stops: List[RouteStop], map_key: str, user_interests=(),
+                      candidate_pool_empty: bool = False, day_label: str = ""):
     """Map full-width on top; all stops in a 3-column grid below."""
     st.markdown("### Itinerary Timeline")
     arrivals = _compute_arrivals(stops)
@@ -421,7 +454,17 @@ def render_itinerary(start_coords, stops: List[RouteStop], map_key: str, user_in
     render_map(start_coords, stops, map_key=map_key)
 
     if not stops:
-        st.warning("No attractions fit within the available time. Try increasing available hours or broadening interests.")
+        if candidate_pool_empty:
+            st.warning(
+                "No qualifying attractions found — try broadening your interests "
+                "or choosing a different starting location."
+            )
+        else:
+            suffix = f" into {day_label}" if day_label else ""
+            st.warning(
+                f"No attractions fit{suffix} within the available time. "
+                "Try increasing available hours or broadening interests."
+            )
         return
 
     st.markdown("<div style='height:.8rem'></div>", unsafe_allow_html=True)
@@ -430,16 +473,28 @@ def render_itinerary(start_coords, stops: List[RouteStop], map_key: str, user_in
 
 def render_single_day_result(start_coords, result: ItineraryResult, user_interests=()):
     render_summary(result.total_score, result.total_visit_minutes,
-                    result.total_travel_minutes, result.utilization_percent, len(result.stops))
+                    result.total_travel_minutes, result.utilization_percent, len(result.stops),
+                    result.max_possible_score, available_minutes=result.available_minutes)
     st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
-    render_itinerary(start_coords, result.stops, map_key="itinerary_map", user_interests=user_interests)
+    render_itinerary(start_coords, result.stops, map_key="itinerary_map", user_interests=user_interests,
+                      candidate_pool_empty=result.candidate_pool_empty)
 
 
 def render_multi_day_result(start_coords, result: MultiDayItineraryResult, user_interests=()):
     st.markdown("### Trip Overview")
     total_stop_count = sum(len(d.stops) for d in result.days)
+    total_available_minutes = sum(d.available_minutes for d in result.days)
     render_summary(result.total_score, result.total_visit_minutes,
-                    result.total_travel_minutes, _trip_utilization(result), total_stop_count)
+                    result.total_travel_minutes, _trip_utilization(result), total_stop_count,
+                    result.max_possible_score, available_minutes=total_available_minutes)
+
+    if result.candidate_pool_empty:
+        st.warning(
+            "No qualifying attractions found — try broadening your interests "
+            "or choosing a different starting location."
+        )
+        return
+
     st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
 
     day_labels = [f"Day {d.day_index + 1}" for d in result.days]
@@ -447,7 +502,7 @@ def render_multi_day_result(start_coords, result: MultiDayItineraryResult, user_
 
     for tab, day in zip(tabs, result.days):
         with tab:
-            day_score_100 = _normalized_trip_score(day.total_score, len(day.stops))
+            day_score_100 = _normalized_trip_score(day.total_score, day.max_possible_score)
             st.markdown(
                 f'<div class="day-banner">'
                 f'Score {day_score_100}/100 · '
@@ -459,19 +514,28 @@ def render_multi_day_result(start_coords, result: MultiDayItineraryResult, user_
             )
 
             if not day.stops:
-                st.warning(
-                    f"No attractions fit into Day {day.day_index + 1}. "
-                    "Try increasing available hours, adding more days, or broadening interests."
-                )
+                if day.candidate_pool_empty:
+                    st.warning(
+                        "No qualifying attractions found — try broadening your interests "
+                        "or choosing a different starting location."
+                    )
+                else:
+                    st.warning(
+                        f"No attractions fit into Day {day.day_index + 1}. "
+                        "Try increasing available hours, adding more days, or broadening interests."
+                    )
                 continue
 
-            render_itinerary(start_coords, day.stops, map_key=f"itinerary_map_day_{day.day_index}", user_interests=user_interests)
+            render_itinerary(start_coords, day.stops, map_key=f"itinerary_map_day_{day.day_index}",
+                              user_interests=user_interests, day_label=f"Day {day.day_index + 1}")
 
 
 def _trip_utilization(result: MultiDayItineraryResult) -> float:
+    # visit-time-only, matching the per-day utilization_percent definition
+    # in services/optimizer.py — see render_summary's caption for the
+    # travel/unused breakdown.
     total_available = sum(d.available_minutes for d in result.days)
-    total_used = result.total_visit_minutes + result.total_travel_minutes
-    return round((total_used / total_available) * 100, 1) if total_available > 0 else 0.0
+    return round((result.total_visit_minutes / total_available) * 100, 1) if total_available > 0 else 0.0
 
 
 def main():
@@ -502,6 +566,7 @@ def main():
             return
 
         client = PlacesClient()
+        location_mismatch_warning = None
 
         with st.status("Generating your itinerary...", expanded=True) as status:
             status.update(label="Finding nearby attractions...")
@@ -512,6 +577,24 @@ def main():
                 st.error(str(exc))
                 st.session_state.pop("trip_result", None)
                 return
+
+            # sanity-check the starting location actually sits near the
+            # declared city — catches e.g. a landmark typed under the wrong
+            # city ("Gateway of India" + city "Paris"), which would otherwise
+            # geocode "successfully" and silently plan a trip in the wrong
+            # place.
+            try:
+                city_coords = client.geocode_city_center(city)
+                distance_km = haversine_distance_km(start_coords, city_coords)
+                if distance_km > config.STARTING_LOCATION_CITY_MAX_DISTANCE_KM:
+                    location_mismatch_warning = (
+                        f"'{starting_location}' geocoded about {distance_km:.0f} km from "
+                        f"the center of '{city}'. Double-check the city and starting "
+                        "location match before trusting this itinerary."
+                    )
+            except GeocodingError:
+                # can't validate city center — don't block trip generation over it
+                logger.warning("Could not geocode city center for '%s' to validate starting location.", city)
 
             categories = sorted({
                 cat for interest in interests for cat in config.INTEREST_CATEGORY_MAP[interest]
@@ -554,6 +637,7 @@ def main():
             "start_coords": start_coords,
             "result": result,
             "interests": interests,
+            "location_mismatch_warning": location_mismatch_warning,
         }
 
     stored = st.session_state.get("trip_result")
@@ -562,6 +646,8 @@ def main():
         return
 
     st.divider()
+    if stored.get("location_mismatch_warning"):
+        st.warning(stored["location_mismatch_warning"])
     if stored["num_days"] == 1:
         render_single_day_result(stored["start_coords"], stored["result"], stored.get("interests", ()))
     else:
