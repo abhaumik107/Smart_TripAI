@@ -183,8 +183,8 @@ button[kind="header"] { display: none !important; }
     color: #0F1115; font-weight: 800; font-family: 'Space Grotesk', sans-serif;
     font-size: 1.2rem; flex-shrink: 0;
 }
-.stop-name { font-weight: 800; font-size: 1.1rem; color: var(--text-bright); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.stop-address { color: var(--text-dim); font-size: .88rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop-name { font-weight: 800; font-size: 1.1rem; color: var(--text-bright); word-wrap: break-word; overflow-wrap: break-word; }
+.stop-address { color: var(--text-dim); font-size: .88rem; margin-top: 2px; word-wrap: break-word; overflow-wrap: break-word; }
 .stop-travel { color: var(--teal); font-size: .92rem; font-weight: 700; margin-bottom: .4rem; }
 
 .score-pill { display: inline-block; background: var(--amber); color: #2B1A00; font-weight: 800; font-size: 1rem; padding: .3rem .8rem; border-radius: 999px; }
@@ -377,7 +377,7 @@ def _stop_card_html(stop: RouteStop, arrival_label: str, travel_text: str, delay
         f'<div class="stop-badge" style="background:{accent};flex-shrink:0">{stop.arrival_order}</div>'
         f'<div style="flex:1;min-width:0">'
         f'<div class="stop-travel" style="color:{accent}">~{arrival_label}{travel_text}</div>'
-        f'<div class="stop-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{stop.attraction.name}</div>'
+        f'<div class="stop-name">{stop.attraction.name}</div>'
         f'<div class="stop-address">{stop.attraction.address}</div>'
         f'<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">'
         f'<span class="score-pill">score {stop.attraction.personalized_score:.2f}</span>'
