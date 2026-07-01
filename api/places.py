@@ -97,7 +97,7 @@ class PlacesClient:
             return self._mock_attractions(center, categories, radius_meters, max_results)
 
         seen_place_ids: set = set()
-        seen_names: set = set()  # normalized chain name dedup e.g. "monginis" across all branches
+        seen_names: set = set()
         results: List[Attraction] = []
 
         for category in dict.fromkeys(categories):
@@ -130,12 +130,14 @@ class PlacesClient:
                 if not place_id or place_id in seen_place_ids:
                     continue
 
-                # skip fast-food chains and very cheap places (price_level 0 or 1)
+                # skip places explicitly priced as free or very cheap
+                # NOTE: does NOT filter price_level -1 (unknown) so parks,
+                # monuments, and landmarks (which Google rarely prices) are kept
                 price_level = place.get("price_level", -1)
                 if price_level != -1 and price_level <= 1:
                     continue
 
-                # deduplicate chain brands by normalized name (catches all Monginis branches)
+                # deduplicate chain brands by normalized name
                 normalized_name = place.get("name", "").strip().lower()
                 if normalized_name in seen_names:
                     continue
@@ -158,7 +160,11 @@ class PlacesClient:
                     )
                 )
 
-                    return results[:max_results]
+                # FIX: was over-indented by one level (indented under results.append
+                # block), making it a syntax error. Correct level is inside the
+                # for-place loop, same level as results.append.
+                if len(results) >= max_results:
+                    return results
 
         return results
 
@@ -199,19 +205,19 @@ class PlacesClient:
         }
 
         results: List[Attraction] = []
-        seen_mock_ids: set = set()  # prevent same place_id appearing under multiple categories
+        seen_mock_ids: set = set()
         for category in dict.fromkeys(categories):
             templates = name_templates.get(category, [f"{category.title()} Spot"])
             for name in templates:
                 if len(results) >= max_results:
                     return results
 
-                # sqrt keeps distribution uniform over area, not biased to center
                 place_id = f"mock_{category}_{name.replace(' ', '_').lower()}"
                 if place_id in seen_mock_ids:
                     continue
                 seen_mock_ids.add(place_id)
 
+                # sqrt keeps distribution uniform over area, not biased to center
                 angle = rng.uniform(0, 2 * math.pi)
                 distance_m = math.sqrt(rng.uniform(0.05, 1.0)) * radius_meters
 
