@@ -1,3 +1,8 @@
+"""
+Every tunable constant in the system lives here so that algorithm modules,
+services, and the UI never hardcode magic numbers. This makes the system
+easy to reason about and easy to tune without touching business logic.
+"""
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -16,20 +21,33 @@ GOOGLE_NEARBY_SEARCH_URL = (
 )
 
 PLACES_SEARCH_RADIUS_METERS: int = 35000
-PLACES_MAX_RESULTS: int = 200  # needs to be high — heavy filtering downstream reduces pool significantly
+PLACES_MAX_RESULTS: int = 120  # needs to be high — heavy filtering downstream reduces pool significantly
+
+# keyword hints passed to Google Places Nearby Search per category
+# dramatically improves results for vague types like tourist_attraction
+# without keyword, tourist_attraction returns hotels; with "heritage" it returns forts/palaces
+CATEGORY_KEYWORDS: Dict[str, str] = {
+    "tourist_attraction": "heritage monument fort palace landmark historic",
+    "museum":             "museum gallery",
+    "place_of_worship":   "temple mosque church shrine dargah",
+    "natural_feature":    "beach waterfall viewpoint cliff",
+    "park":               "garden park",
+    "hindu_temple":       "temple mandir",
+    "mosque":             "mosque dargah",
+}
 # Interests
 
 INTEREST_CATEGORY_MAP: Dict[str, List[str]] = {
-    "History": ["museum", "historical_landmark", "place_of_worship", "monument"],
-    "Museums": ["museum", "art_gallery"],
-    "Nature": ["park", "natural_feature", "zoo", "botanical_garden"],
-    "Food": ["restaurant", "cafe", "bakery"],
-    "Shopping": ["shopping_mall", "store", "market"],
-    "Nightlife": ["bar", "night_club"],
-    "Entertainment": ["amusement_park", "tourist_attraction"],
-    "Spiritual": ["place_of_worship", "cemetery", "hindu_temple", "mosque", "church"],
-    "Beaches & Outdoors": ["natural_feature", "park", "campground", "rv_park"],
-    "Sports & Recreation": ["stadium", "sports_complex", "bowling_alley", "golf_course"],
+    "History":            ["museum", "tourist_attraction", "place_of_worship"],
+    "Museums":            ["museum", "art_gallery"],
+    "Nature":             ["park", "natural_feature", "zoo", "botanical_garden"],
+    "Food":               ["restaurant", "cafe", "bakery"],
+    "Shopping":           ["shopping_mall", "store", "market"],
+    "Nightlife":          ["bar", "night_club"],
+    "Entertainment":      ["amusement_park", "tourist_attraction"],
+    "Spiritual":          ["place_of_worship", "mosque", "church", "hindu_temple"],
+    "Beaches & Outdoors": ["natural_feature", "park", "campground"],
+    "Sports & Recreation":["stadium", "bowling_alley", "golf_course"],
 }
 
 ALL_INTERESTS: List[str] = list(INTEREST_CATEGORY_MAP.keys())
@@ -64,7 +82,7 @@ SCORING_WEIGHTS.validate()
 TIME_BLOCK_MINUTES: int = 15
 
 # The Knapsack DP optimizes the visiting time budget (available_time - travel_buffer)
-TRAVEL_TIME_BUFFER_RATIO: float = 0.20
+TRAVEL_TIME_BUFFER_RATIO: float = 0.25
 DEFAULT_VISIT_DURATION_MINUTES: int = 60
 
 DEFAULT_VISIT_DURATIONS: Dict[str, int] = {
