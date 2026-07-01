@@ -59,7 +59,7 @@ MIN_RATING: float = 3.70            # 3.8 was too aggressive, many legit tourist
 # a small circle of reviewers. Landmark-tier categories get a lower floor
 # since there are fewer of them and even lesser-known ones are often
 # genuinely worth visiting.
-MIN_REVIEW_COUNT: int = 200
+MIN_REVIEW_COUNT: int = 100
 _LANDMARK_MIN_REVIEW_COUNT: int = 25
 _LANDMARK_CATEGORIES: Set[str] = {
     "museum", "historical_landmark", "tourist_attraction", "monument",
