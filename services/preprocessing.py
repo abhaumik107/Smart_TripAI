@@ -7,30 +7,21 @@ from utils.helpers import get_logger
 
 logger = get_logger(__name__)
 
-# exact normalized names of known chains/confectioneries to block
+# exact normalized names — only universally known fast-food chains, no city-specific brands
 _CHAIN_BLOCKLIST: Set[str] = {
-    "mcdonald's", "mcdonalds", "subway", "domino's", "dominos",
+    "mcdonald's", "mcdonalds", "kfc", "subway", "domino's", "dominos",
     "pizza hut", "burger king", "starbucks", "dunkin", "dunkin donuts",
-    "costa coffee", "cafe coffee day", "ccd", "haldiram's", "haldirams",
-    "barbeque nation", "monginis", "theobroma", "wagh bakri", "baskin robbins",
-    "amul", "havmor", "naturals ice cream", "naturals", "cookie man",
+    "costa coffee", "papa john's", "taco bell", "wendy's", "popeyes",
+    "five guys", "shake shack",
 }
 
-# if any of these substrings appear in the name, drop the attraction
-# catches hotels/hostels/cinemas tagged by Google as tourist_attraction
+# generic substrings that indicate non-tourist places regardless of city or country
+# deliberately NO brand names here — that's handled by the types[] check in places.py
 _NAME_KEYWORD_BLOCKLIST: Set[str] = {
-    # accommodation
     "hotel", "hostel", "inn ", " inn", "motel", "lodge", "lodging",
-    "suites", "residency", "guest house", "guesthouse", "serviced apartment",
-    "3 star", "4 star", "5 star", "star hotel", "by marriott", "by ihg",
-    "taj hotel", "oberoi", "leela", "novotel", "ibis", "hyatt", "hilton",
-    # cinemas
-    "cinema", "cinemas", "cineplex", "multiplex", "imax", "pvr", "inox",
-    "miraj cinema", "carnival cinema",
-    # banks and finance — often tagged as tourist_attraction or establishment
-    " bank", "bank ", "banking", "atm ", " atm", "finance", "fintech",
-    "hdfc", "icici", "sbi bank", "axis bank", "kotak bank", "yes bank",
-    "idbi", "canara bank", "union bank", "pnb", "bob ",
+    "suites", "guest house", "guesthouse", "serviced apartment",
+    "cinema", "cinemas", "cineplex", "multiplex",
+    " bank", "bank ", "atm ",
 }
 
 # Google Places types that are never useful in a travel itinerary
@@ -68,6 +59,7 @@ def _is_name_blocked(name: str) -> bool:
 
 
 def clean_attractions(attractions: List[Attraction]) -> List[Attraction]:
+    # dedup by place_id + normalized name; block hotels, chains, cinemas by name keyword
     seen_ids: set = set()
     seen_names: set = set()
     category_counts: Dict[str, int] = {}
