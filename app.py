@@ -371,7 +371,13 @@ def _why_selected_reasons(stop: RouteStop, user_interests) -> List[str]:
             else None,
         ),
     ]
-    if components.get("prestige_multiplier", 1.0) > 1.0:
+    # the prestige multiplier boosts several tourist-adjacent categories
+    # (art galleries, places of worship, parks, zoos...), but "iconic
+    # landmark" is only an honest claim for the actual landmark-tier
+    # categories. Calling a small private art gallery a "landmark" is
+    # exactly the kind of overclaim that erodes trust — so we scope it.
+    _LANDMARK_CATEGORIES = {"museum", "historical_landmark", "tourist_attraction", "monument"}
+    if stop.attraction.category in _LANDMARK_CATEGORIES and components.get("prestige_multiplier", 1.0) > 1.0:
         candidates.append((weights.rating_weight, "Iconic landmark/tourist-category boost"))
 
     # rank by actual weighted contribution to the final score, highest first
