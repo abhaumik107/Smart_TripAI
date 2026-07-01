@@ -1,8 +1,3 @@
-"""
-Every tunable constant in the system lives here so that algorithm modules,
-services, and the UI never hardcode magic numbers. This makes the system
-easy to reason about and easy to tune without touching business logic.
-"""
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -21,7 +16,7 @@ GOOGLE_NEARBY_SEARCH_URL = (
 )
 
 PLACES_SEARCH_RADIUS_METERS: int = 35000
-PLACES_MAX_RESULTS: int = 100  # needs to be high — heavy filtering downstream reduces pool significantly
+PLACES_MAX_RESULTS: int = 200  # needs to be high — heavy filtering downstream reduces pool significantly
 # Interests
 
 INTEREST_CATEGORY_MAP: Dict[str, List[str]] = {
@@ -69,7 +64,7 @@ SCORING_WEIGHTS.validate()
 TIME_BLOCK_MINUTES: int = 15
 
 # The Knapsack DP optimizes the visiting time budget (available_time - travel_buffer)
-TRAVEL_TIME_BUFFER_RATIO: float = 0.25
+TRAVEL_TIME_BUFFER_RATIO: float = 0.20
 DEFAULT_VISIT_DURATION_MINUTES: int = 60
 
 DEFAULT_VISIT_DURATIONS: Dict[str, int] = {
