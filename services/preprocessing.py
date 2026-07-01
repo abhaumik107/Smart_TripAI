@@ -19,11 +19,18 @@ _CHAIN_BLOCKLIST: Set[str] = {
 # if any of these substrings appear in the name, drop the attraction
 # catches hotels/hostels/cinemas tagged by Google as tourist_attraction
 _NAME_KEYWORD_BLOCKLIST: Set[str] = {
+    # accommodation
     "hotel", "hostel", "inn ", " inn", "motel", "lodge", "lodging",
     "suites", "residency", "guest house", "guesthouse", "serviced apartment",
-    "3 star", "4 star", "5 star", "star hotel",
+    "3 star", "4 star", "5 star", "star hotel", "by marriott", "by ihg",
+    "taj hotel", "oberoi", "leela", "novotel", "ibis", "hyatt", "hilton",
+    # cinemas
     "cinema", "cinemas", "cineplex", "multiplex", "imax", "pvr", "inox",
-    "miraj cinema", "carnival cinema", "regal cinema",
+    "miraj cinema", "carnival cinema",
+    # banks and finance — often tagged as tourist_attraction or establishment
+    " bank", "bank ", "banking", "atm ", " atm", "finance", "fintech",
+    "hdfc", "icici", "sbi bank", "axis bank", "kotak bank", "yes bank",
+    "idbi", "canara bank", "union bank", "pnb", "bob ",
 }
 
 # Google Places types that are never useful in a travel itinerary
@@ -61,7 +68,6 @@ def _is_name_blocked(name: str) -> bool:
 
 
 def clean_attractions(attractions: List[Attraction]) -> List[Attraction]:
-    # dedup by place_id + normalized name; block hotels, chains, cinemas by name keyword
     seen_ids: set = set()
     seen_names: set = set()
     category_counts: Dict[str, int] = {}
