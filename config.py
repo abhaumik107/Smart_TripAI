@@ -1,8 +1,3 @@
-"""
-Every tunable constant in the system lives here so that algorithm modules,
-services, and the UI never hardcode magic numbers. This makes the system
-easy to reason about and easy to tune without touching business logic.
-"""
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -23,9 +18,6 @@ GOOGLE_NEARBY_SEARCH_URL = (
 PLACES_SEARCH_RADIUS_METERS: int = 35000
 PLACES_MAX_RESULTS: int = 120  # needs to be high — heavy filtering downstream reduces pool significantly
 
-# keyword hints passed to Google Places Nearby Search per category
-# dramatically improves results for vague types like tourist_attraction
-# without keyword, tourist_attraction returns hotels; with "heritage" it returns forts/palaces
 CATEGORY_KEYWORDS: Dict[str, str] = {
     "tourist_attraction": "heritage monument fort palace landmark historic",
     "museum":             "museum gallery",
@@ -118,6 +110,8 @@ DEFAULT_VISIT_DURATIONS: Dict[str, int] = {
 }
 
 AVERAGE_TRAVEL_SPEED_KMH: float = 25.0
+
+STARTING_LOCATION_CITY_MAX_DISTANCE_KM: float = 75.0
 
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
