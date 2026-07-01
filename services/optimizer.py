@@ -184,6 +184,9 @@ class TripOptimizer:
         attractions = preprocess(candidate_attractions)
         attractions = self.scorer.score_attractions(attractions, user_interests)
         attractions = filter_by_min_score(attractions)
+        # sort descending so multi-day knapsack sees best attractions first
+        # this ensures top-scored tourist places land in Day 1, not scattered randomly
+        attractions = sorted(attractions, key=lambda a: a.personalized_score, reverse=True)
 
         global_matrix = build_distance_matrix(start_location, attractions)
 
