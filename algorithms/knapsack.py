@@ -1,4 +1,4 @@
-# knapsack.py - 0/1 knapsack DP to pick attractions that maximize score within time budget
+# Using 0/1 knapsack DP to pick attractions that maximize score within time budget
 
 from dataclasses import dataclass
 from typing import List
