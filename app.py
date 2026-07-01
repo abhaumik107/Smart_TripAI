@@ -24,7 +24,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
 THEME_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap');
@@ -151,20 +150,19 @@ button[kind="header"] { display: none !important; }
 }
 .stTabs [aria-selected="true"] { background: linear-gradient(135deg, var(--teal), var(--amber)) !important; color: #0F1115 !important; }
 
-/* Itinerary: single 3-column grid, full width below map */
-.stop-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .85rem; }
-@media (max-width: 1000px) { .stop-grid-3 { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .stop-grid-3 { grid-template-columns: 1fr; } }
+/* Itinerary grids */
+.stop-grid-1 { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.stop-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 900px) { .stop-grid-2 { grid-template-columns: 1fr; } }
 
 .stop-card {
-    background: #232733; border-radius: 14px; padding: .95rem 1.1rem;
+    background: #232733; border-radius: 16px; padding: 1.2rem 1.4rem;
     border: 1px solid var(--border-glow); border-left: 4px solid var(--teal);
     box-shadow: 0 4px 18px rgba(0,0,0,.3);
     transition: transform .2s ease, box-shadow .2s ease;
     animation: cardrise .4s ease backwards;
-    display: flex; flex-direction: row; gap: .9rem; align-items: flex-start;
 }
-.stop-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+.stop-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(0,0,0,.4); }
 @keyframes cardrise {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
@@ -209,7 +207,6 @@ iframe { border-radius: 16px !important; border: 1px solid var(--border-glow) !i
 </style>
 """
 
-
 def inject_decor():
     st.markdown(THEME_CSS, unsafe_allow_html=True)
     st.markdown(
@@ -219,8 +216,7 @@ def inject_decor():
         """,
         unsafe_allow_html=True,
     )
-
-
+    
 def render_sidebar():
     st.sidebar.markdown(
         '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:1.9rem;font-weight:800;'
@@ -231,22 +227,21 @@ def render_sidebar():
     )
     st.sidebar.caption("Plan an optimized, time-aware travel itinerary.")
 
-    city = st.sidebar.text_input("City", placeholder="e.g. Mumbai", key="sb_city")
+    city = st.sidebar.text_input("City", placeholder="e.g. Mumbai")
     starting_location = st.sidebar.text_input(
-        "Starting Location", placeholder="e.g. Gateway of India", key="sb_start"
+        "Starting Location", placeholder="e.g. Gateway of India"
     )
 
     num_days = st.sidebar.number_input(
         "Number of Days", min_value=1, max_value=7, value=1, step=1,
-        help="Each day starts fresh from your starting location.", key="sb_days"
+        help="Each day starts fresh from your starting location.",
     )
 
     available_hours = st.sidebar.slider(
-        "Available Time per Day (hours)", min_value=1.0, max_value=12.0, value=5.0, step=0.5,
-        key="sb_hours"
+        "Available Time per Day (hours)", min_value=1.0, max_value=12.0, value=5.0, step=0.5
     )
     interests = st.sidebar.multiselect(
-        "Interests", options=config.ALL_INTERESTS, default=["History", "Food"], key="sb_interests"
+        "Interests", options=config.ALL_INTERESTS, default=["History", "Food"]
     )
 
     if config.MOCK_MODE:
@@ -260,7 +255,6 @@ def render_sidebar():
     )
     return city, starting_location, available_hours, int(num_days), interests, submitted
 
-
 def _normalized_trip_score(total_score: float, stop_count: int) -> int:
     """Display-only normalization of the raw score onto a 0-100 scale.
     Does not alter the underlying scoring/optimization logic in any way."""
@@ -269,14 +263,12 @@ def _normalized_trip_score(total_score: float, stop_count: int) -> int:
     avg_score_per_stop = total_score / stop_count
     return max(0, min(100, round(avg_score_per_stop * 100)))
 
-
 def render_summary(total_score, total_visit_minutes, total_travel_minutes, utilization_percent, stop_count: int):
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Trip Score", f"{_normalized_trip_score(total_score, stop_count)}/100")
     col2.metric("Visit Time", format_minutes_as_hours_text(total_visit_minutes))
     col3.metric("Travel Time", format_minutes_as_hours_text(total_travel_minutes))
     col4.metric("Time Utilization", f"{utilization_percent:.1f}%")
-
 
 def render_map(start_coords, stops: List[RouteStop], map_key: str):
     fmap = folium.Map(location=start_coords, zoom_start=13, tiles="cartodbdark_matter")
@@ -306,7 +298,6 @@ def render_map(start_coords, stops: List[RouteStop], map_key: str):
         folium.PolyLine(route_points, color="#22D3C5", weight=4, opacity=0.85).add_to(fmap)
 
     st_folium(fmap, width=None, height=480, key=map_key)
-
 
 def _why_selected_reasons(stop: RouteStop, user_interests) -> List[str]:
     """Pure display heuristic for explaining a recommendation.
@@ -346,7 +337,6 @@ def _why_selected_reasons(stop: RouteStop, user_interests) -> List[str]:
 
     return deduped[:3]
 
-
 def _why_selected_html(reasons: List[str]) -> str:
     pills = "".join(f'<span class="why-selected-reason">{reason}</span>' for reason in reasons)
     return (
@@ -358,24 +348,27 @@ def _why_selected_html(reasons: List[str]) -> str:
 
 
 def _stop_card_html(stop: RouteStop, arrival_label: str, travel_text: str, delay: float, accent: str, user_interests) -> str:
+    # NOTE: zero leading whitespace per line - Markdown treats 4+ leading
+    # spaces as a code block, which makes Streamlit render HTML as text.
     visit_text = format_minutes_as_hours_text(stop.attraction.visit_duration_minutes)
     why_html = _why_selected_html(_why_selected_reasons(stop, user_interests))
     return (
         f'<div class="stop-card" style="animation-delay:{delay}s;border-left-color:{accent}">'
-        f'<div class="stop-badge" style="background:{accent};flex-shrink:0">{stop.arrival_order}</div>'
-        f'<div style="flex:1;min-width:0">'
-        f'<div class="stop-travel" style="color:{accent}">~{arrival_label}{travel_text}</div>'
-        f'<div class="stop-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{stop.attraction.name}</div>'
+        f'<div style="display:flex;gap:1rem;align-items:flex-start">'
+        f'<div class="stop-badge" style="background:{accent}">{stop.arrival_order}</div>'
+        f'<div style="flex:1">'
+        f'<div class="stop-travel" style="color:{accent}">arrives ~{arrival_label}{travel_text}</div>'
+        f'<div class="stop-name">{stop.attraction.name}</div>'
         f'<div class="stop-address">{stop.attraction.address}</div>'
-        f'<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">'
+        f'<div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">'
         f'<span class="score-pill">score {stop.attraction.personalized_score:.2f}</span>'
-        f'<span style="color:#A4ABBC;font-size:.88rem;font-weight:600">{visit_text}</span>'
+        f'<span style="color:#A4ABBC;font-size:.9rem;font-weight:600">{visit_text} visit</span>'
         f'</div>'
         f'{why_html}'
         f'</div>'
         f'</div>'
+        f'</div>'
     )
-
 
 def _compute_arrivals(stops: List[RouteStop]):
     cumulative_minutes = 0
@@ -392,28 +385,36 @@ def _compute_arrivals(stops: List[RouteStop]):
     return arrivals
 
 
-def render_stop_grid(stops: List[RouteStop], arrivals, start_index: int, user_interests):
+def render_stop_grid(stops: List[RouteStop], arrivals, start_index: int, columns: int, user_interests):
     cards = []
     for offset, (stop, (arrival_label, travel_text)) in enumerate(zip(stops, arrivals)):
         i = start_index + offset
         accent = "var(--teal)" if i % 2 == 0 else "var(--amber)"
         cards.append(_stop_card_html(stop, arrival_label, travel_text, i * 0.05, accent, user_interests))
-    st.markdown('<div class="stop-grid-3">' + "".join(cards) + '</div>', unsafe_allow_html=True)
+    grid_class = "stop-grid-1" if columns == 1 else "stop-grid-2"
+    st.markdown(f'<div class="{grid_class}">' + "".join(cards) + '</div>', unsafe_allow_html=True)
 
 
 def render_itinerary(start_coords, stops: List[RouteStop], map_key: str, user_interests=()):
-    """Map full-width on top; all stops in a 3-column grid below."""
+    """First 2 stops sit beside the map; any remaining stops form full-width 4-col rows."""
     st.markdown("### Itinerary Timeline")
     arrivals = _compute_arrivals(stops)
 
-    render_map(start_coords, stops, map_key=map_key)
+    map_col, timeline_col = st.columns([0.55, 0.45])
+    with map_col:
+        render_map(start_coords, stops, map_key=map_key)
+    with timeline_col:
+        if not stops:
+            st.warning(
+                "No attractions fit within the available time. "
+                "Try increasing available hours or broadening interests."
+            )
+        else:
+            render_stop_grid(stops[:2], arrivals[:2], start_index=0, columns=1, user_interests=user_interests)
 
-    if not stops:
-        st.warning("No attractions fit within the available time. Try increasing available hours or broadening interests.")
-        return
-
-    st.markdown("<div style='height:.8rem'></div>", unsafe_allow_html=True)
-    render_stop_grid(stops, arrivals, start_index=0, user_interests=user_interests)
+    if len(stops) > 2:
+        st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+        render_stop_grid(stops[2:], arrivals[2:], start_index=2, columns=2, user_interests=user_interests)
 
 
 def render_single_day_result(start_coords, result: ItineraryResult, user_interests=()):
@@ -435,14 +436,13 @@ def render_multi_day_result(start_coords, result: MultiDayItineraryResult, user_
 
     for tab, day in zip(tabs, result.days):
         with tab:
-            day_score_100 = _normalized_trip_score(day.total_score, len(day.stops))
             st.markdown(
-                f'<div class="day-banner">'
-                f'Score {day_score_100}/100 · '
-                f'{format_minutes_as_hours_text(day.total_visit_minutes)} visiting · '
-                f'{format_minutes_as_hours_text(day.total_travel_minutes)} travel · '
-                f'{day.utilization_percent:.1f}% time used'
-                f'</div>',
+                f"""<div class="day-banner">
+                Score {day.total_score:.2f} ·
+                {format_minutes_as_hours_text(day.total_visit_minutes)} visiting ·
+                {format_minutes_as_hours_text(day.total_travel_minutes)} travel ·
+                {day.utilization_percent:.1f}% time used
+                </div>""",
                 unsafe_allow_html=True,
             )
 
@@ -535,8 +535,7 @@ def main():
             status.update(label="Building interactive map...")
             status.update(label="Itinerary ready!", state="complete", expanded=False)
 
-        # save result to session_state so it does not disappear when the
-        # map widget triggers a rerun (submitted is only True for one run)
+        # save result to session_state so it does not disappear when the map widget triggers a rerun
         st.session_state["trip_result"] = {
             "num_days": num_days,
             "start_coords": start_coords,
@@ -548,7 +547,6 @@ def main():
     if not stored:
         st.info("Fill in the sidebar and click Generate Itinerary to get started.")
         return
-
     st.divider()
     if stored["num_days"] == 1:
         render_single_day_result(stored["start_coords"], stored["result"], stored.get("interests", ()))
