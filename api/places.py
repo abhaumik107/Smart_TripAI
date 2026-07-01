@@ -158,8 +158,7 @@ class PlacesClient:
                     )
                 )
 
-                if len(results) >= max_results:
-                    return results
+                    return results[:max_results]
 
         return results
 
