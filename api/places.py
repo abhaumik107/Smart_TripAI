@@ -11,6 +11,22 @@ from utils.helpers import get_logger
 
 logger = get_logger(__name__)
 
+# Google Places types that should never appear in a travel itinerary
+# checked against the full types[] array each result returns — catches hotels/banks
+# tagged as tourist_attraction, establishment, point_of_interest etc.
+_BLOCKED_PLACE_TYPES = {
+    "lodging",                  # hotels, hostels, motels, B&Bs
+    "bank", "atm", "finance",   # banks and ATMs
+    "real_estate_agency",
+    "insurance_agency",
+    "gas_station", "car_repair", "car_dealer", "car_wash", "car_rental",
+    "laundry", "hair_care", "beauty_salon",
+    "gym", "physiotherapist",
+    "hospital", "doctor", "dentist", "pharmacy", "veterinary_care",
+    "funeral_home", "storage",
+    "transit_station", "bus_station", "subway_station", "taxi_stand",
+}
+
 
 @dataclass
 class Attraction:
@@ -135,12 +151,19 @@ class PlacesClient:
                 if not place_id or place_id in seen_place_ids:
                     continue
 
-                # skip fast-food chains and very cheap places (price_level 0 or 1)
+                # check ALL types Google assigned to this place — a hotel tagged as
+                # tourist_attraction still has "lodging" in its types list
+                # this is the global fix: no brand names needed, works for any city
+                place_types = set(place.get("types", []))
+                if place_types & _BLOCKED_PLACE_TYPES:
+                    continue
+
+                # skip cheap/fast-food tier places (price_level 0 or 1)
                 price_level = place.get("price_level", -1)
                 if price_level != -1 and price_level <= 1:
                     continue
 
-                # deduplicate chain brands by normalized name (catches all Monginis branches)
+                # deduplicate chain brands by normalized name
                 normalized_name = place.get("name", "").strip().lower()
                 if normalized_name in seen_names:
                     continue
