@@ -151,18 +151,26 @@ button[kind="header"] { display: none !important; }
 }
 .stTabs [aria-selected="true"] { background: linear-gradient(135deg, var(--teal), var(--amber)) !important; color: #0F1115 !important; }
 
-/* Itinerary: single 3-column grid, full width below map */
-.stop-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .85rem; }
-@media (max-width: 1000px) { .stop-grid-3 { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .stop-grid-3 { grid-template-columns: 1fr; } }
+/* Itinerary: responsive 3-column grid that fits within Streamlit's content area */
+.stop-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+@media (max-width: 1100px) { .stop-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px)  { .stop-grid-3 { grid-template-columns: minmax(0, 1fr); } }
 
 .stop-card {
-    background: #232733; border-radius: 14px; padding: .95rem 1.1rem;
+    background: #232733; border-radius: 14px; padding: .85rem 1rem;
     border: 1px solid var(--border-glow); border-left: 4px solid var(--teal);
     box-shadow: 0 4px 18px rgba(0,0,0,.3);
     transition: transform .2s ease, box-shadow .2s ease;
     animation: cardrise .4s ease backwards;
-    display: flex; flex-direction: row; gap: .9rem; align-items: flex-start;
+    display: flex; flex-direction: row; gap: .75rem; align-items: flex-start;
+    min-width: 0; overflow: hidden; box-sizing: border-box;
 }
 .stop-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 @keyframes cardrise {
@@ -175,8 +183,8 @@ button[kind="header"] { display: none !important; }
     color: #0F1115; font-weight: 800; font-family: 'Space Grotesk', sans-serif;
     font-size: 1.2rem; flex-shrink: 0;
 }
-.stop-name { font-weight: 800; font-size: 1.28rem; color: var(--text-bright); }
-.stop-address { color: var(--text-dim); font-size: 1rem; margin-top: 2px; }
+.stop-name { font-weight: 800; font-size: 1.1rem; color: var(--text-bright); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.stop-address { color: var(--text-dim); font-size: .88rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stop-travel { color: var(--teal); font-size: .92rem; font-weight: 700; margin-bottom: .4rem; }
 
 .score-pill { display: inline-block; background: var(--amber); color: #2B1A00; font-weight: 800; font-size: 1rem; padding: .3rem .8rem; border-radius: 999px; }
