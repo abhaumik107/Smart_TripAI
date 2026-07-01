@@ -78,14 +78,29 @@ class WeightedScorer(BaseScorer):
         normalized_popularity = self._normalize_popularity(attraction.review_count)
         interest_match = self._interest_match(attraction.category, user_interests)
 
-        base_score = (
-            self.weights.rating_weight * normalized_rating
-            + self.weights.popularity_weight * normalized_popularity
-            + self.weights.interest_weight * interest_match
-        )
+        rating_contribution = self.weights.rating_weight * normalized_rating
+        popularity_contribution = self.weights.popularity_weight * normalized_popularity
+        interest_contribution = self.weights.interest_weight * interest_match
+
+        base_score = rating_contribution + popularity_contribution + interest_contribution
         # apply category prestige multiplier — tourist spots score higher, food spots lower
         prestige = self._CATEGORY_PRESTIGE.get(attraction.category, 1.0)
-        return round(min(max(base_score * prestige, 0.0), 1.0), 4)
+        final_score = round(min(max(base_score * prestige, 0.0), 1.0), 4)
+
+        # store the real weighted breakdown so the UI can explain *why* this
+        # attraction scored the way it did, instead of relying on a separate
+        # display-only heuristic that doesn't reflect the actual scorer.
+        attraction.score_components = {
+            "normalized_rating": round(normalized_rating, 4),
+            "normalized_popularity": round(normalized_popularity, 4),
+            "interest_match": round(interest_match, 4),
+            "rating_contribution": round(rating_contribution, 4),
+            "popularity_contribution": round(popularity_contribution, 4),
+            "interest_contribution": round(interest_contribution, 4),
+            "prestige_multiplier": prestige,
+        }
+
+        return final_score
 
     def _normalize_rating(self, rating: float) -> float:
         # pool-relative: best attraction in this batch scores 1.0
